@@ -1,5 +1,4 @@
-# Install Dependencies
-# pip install gym
+from Forex_data import Historical_Forex_data
 
 # Forex/Stock Trading Environment Setup
 
@@ -24,7 +23,7 @@ class ForexTradingEnv(gym.Env):
         self.balance = 1000
         self.position = 0
         self.price_change = []
-        return self.data[self.current_step]
+        return self.current_step
 
     def step(self, action):
         prev_balance = self.balance
@@ -51,7 +50,7 @@ class ForexTradingEnv(gym.Env):
 
         self.reward = self.balance - prev_balance
         self.price_change.append(self.reward)
-        return self.data[self.current_step], self.reward, self.done, {}
+        return self.current_step, self.reward, self.done, {}
 
     def render(self, mode='human'):
         print(f"Step: {self.current_step}, Balance: {self.balance}, Position: {self.position}")
@@ -86,7 +85,7 @@ class QLearningAgent:
             self.epsilon *= self.epsilon_decay
 
 # Create the agent and environment
-data = df['Close'].values  # Use the 'Close' prices for trading
+data = Historical_Forex_data['Close'].values  # Use the 'Close' prices for trading
 env = ForexTradingEnv(data)
 agent = QLearningAgent(action_space=3, state_space=len(data))
 
