@@ -1,96 +1,113 @@
-# 1. LSTM Networks for Forex/Stock Price Prediction
-# pip install yfinance pandas numpy matplotlib tensorflow scikit-learn
-# Data Preparation and Feature Scaling
+from Forex_data import Historical_Forex_data
+import numpy
+import pandas
+from sklearn.preprocessing import StandardScaler
+from matplotlib import pyplot
 
-import yfinance as yf
+Close_records = Historical_Forex_data["Close"].values
 
-# Download historical Forex data (EUR/USD)
-# For stock data, you can use 'AAPL' for Apple, 'GOOG' for Google, etc.
-df = yf.download('EURUSD=X', start='2018-01-01', end='2023-01-01')
-print(df.head())
+scaler = StandardScaler() # The scaler expects a 2D array because it generally processes data where each row represents a sample, and each column represents a feature.
+scaled_Closed_records = scaler.fit_transform(Close_records.reshape(-1,1))
 
-# For stock data (e.g., AAPL)
-# df = yf.download('AAPL', start='2018-01-01', end='2023-01-01')
+# We use the window of past 24 time steps to predict the next value
+sequence_length = 24
+X_train, y_train = [], []
 
+for i in range(sequence_length, len(scaled_Closed_records)):
+    X_train.append(scaled_Closed_records[i - sequence_length:i, 0])
+    y_train.append(scaled_Closed_records[i, 0])
+    
+X_train, y_train = numpy.array(X_train), numpy.array(y_train)
 
-import numpy as np
-import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
-import matplotlib.pyplot as plt
+# print(scaled_Closed_records)
+# print(scaled_Closed_records.shape) -- (10319, 1)
+# print(X_train)
+# print(X_train.shape) -- (10295, 24)
+# print(y_train)
+# print(y_train.shape) -- (10295,) -- as generating one target value for each sequence | y_train is the target for a particular sequence in X_train
 
-# Use the 'Close' price for prediction
-data = df[['Close']].values
+# Reshape the data to 3D (sample, time steps, features) for LSTM input
 
-# Scaling data for LSTM model
-scaler = MinMaxScaler(feature_range=(0, 1))
-scaled_data = scaler.fit_transform(data)
+X_train = numpy.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
 
-# Creating training data (e.g., 60 past steps to predict the next step)
-sequence_length = 60
-x_train, y_train = [], []
-
-for i in range(sequence_length, len(scaled_data)):
-    x_train.append(scaled_data[i-sequence_length:i, 0])
-    y_train.append(scaled_data[i, 0])
-
-x_train, y_train = np.array(x_train), np.array(y_train)
-
-# Reshape the data to 3D (samples, time steps, features) for LSTM input
-x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+# print(X_train) 
+# print(X_train.shape) -- (10295, 24, 1)
+# -- We have a time series dataset (X_train) where each sample (total 10295) is a sequence of 24 time steps, and each time step has 1 feature
+# -- meaning Sequence 1 = 24 time steps = sample 1, Sequence 2 = 24 time steps = sample 2, ... , Sequence 10295 = 24 time steps = sample 10295
 
 # Splitting data into train and test sets (80% train, 20% test)
-train_size = int(len(scaled_data) * 0.8)
-train_data = scaled_data[:train_size]
-test_data = scaled_data[train_size-sequence_length:]
+
+train_size = int(len(scaled_Closed_records) * 0.8)
+train_data = scaled_Closed_records[:train_size] # 8255
+test_data = scaled_Closed_records[train_size - sequence_length:] # 8231
 
 # Building and Training the LSTM Model
+import tensorflow
+from keras.api.models import Sequential
+from keras.api.layers import LSTM, Dense, Dropout, Input
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-
-# Building the LSTM model
 model = Sequential()
 
-model.add(LSTM(units=50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+model.add(Input(shape=(X_train.shape[1], 1))) # Input layer
+
+model.add(LSTM(units=60, return_sequences=True)) # First LSTM layer with Dropout
 model.add(Dropout(0.2))
 
-model.add(LSTM(units=50, return_sequences=False))
-model.add(Dropout(0.2))
+model.add(LSTM(units=60, return_sequences=False)) # Second LSTM layer with Dropout
+model.add(Dropout(0.2)) # 20% of the neurons are dropped out at each training step, helping the model generalize better
 
-model.add(Dense(units=25))
-model.add(Dense(units=1))
+model.add(Dense(units=30, activation='relu')) # dense layer (fully connected layer) # Rectified Linear Unit introduces non-linearity into the network, allowing the model to learn more complex patterns.
+model.add(Dense(units=1)) # Output layer
 
-# Compiling the model
-model.compile(optimizer='adam', loss='mean_squared_error')
+# LSTM Layer are great for learning and predicting sequential or time-dependent data. In this case we applied with 50 units/neurons,
+# which should allow the model to learn patterns from the input sequence.
 
-# Training the model
-model.fit(x_train, y_train, batch_size=64, epochs=10)
+# To reduce/prevent overfitting in neural networks we randomly dropping 20% of the neurons (units) in the previous layer during the training step
+# which forces the model to learn more robust patterns and prevents it from relying too heavily on any one set of neurons.
+# Overfitting is common in deep learning models, especially when dealing with time series data that might have noise or variability.
+
+# Activation Function: If no activation function is specified, it defaults to linear.
+# This means the output of each neuron is just the linear combination of the inputs, without any non-linearity (such as ReLU or sigmoid). 
+
+model.compile(optimizer='adam', loss='mean_squared_error') # Compiling the model # Adaptive Moment Estimation # MSE calculates the average squared difference between the predicted values (y_pred) and the true values (y_true)
+model.fit(X_train, y_train, batch_size=64, epochs=10)  # Training the model # model will iterate over the dataset 10 times # epochs how many times the model will go through the entire training dataset
+# batch_size number of samples the model will use in one forward and backward pass (one step of gradient descent) before updating its weights.
 
 # Test Data Prediction
-x_test, y_test = [], []
-for i in range(sequence_length, len(test_data)):
-    x_test.append(test_data[i-sequence_length:i, 0])
-    y_test.append(test_data[i, 0])
 
-x_test = np.array(x_test)
-x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+X_test, y_test = [], []
+
+for j in range(sequence_length, len(test_data)):
+    X_test.append(test_data[j-sequence_length:j, 0])
+    y_test.append(test_data[j,0])
+    
+X_test, y_test = numpy.array(X_test), numpy.array(y_test)
+
+X_test = numpy.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
 
 # Predict the test data
-predicted_prices = model.predict(x_test)
+
+predicted_prices = model.predict(X_test)
 predicted_prices = scaler.inverse_transform(predicted_prices)
 real_prices = scaler.inverse_transform([y_test])
 
+# Create Datetime index for plotting
+test_datetime = Historical_Forex_data.index[-len(X_test):]  # Adjust this based on the actual range of your test data
+
 # Plot the results
-plt.figure(figsize=(12, 6))
-plt.plot(real_prices[0], color='black', label='Real Prices')
-plt.plot(predicted_prices, color='blue', label='Predicted Prices')
-plt.title('Price Prediction')
-plt.xlabel('Time')
-plt.ylabel('Price')
-plt.legend()
-plt.show()
 
+pyplot.figure(figsize=(20, 5))
+pyplot.plot(test_datetime, real_prices[0], color='black', label='Real Prices')
+pyplot.plot(test_datetime, predicted_prices, color='blue', label='Predicted Prices')
+pyplot.title('Price Prediction')
+pyplot.xlabel('Datetime')
+pyplot.ylabel('Price')
+pyplot.legend()
+pyplot.savefig("price_prediction_plot.png", format="png")
+pyplot.show()
 
-# Explanation:
-# This LSTM model uses past 60 days’ closing prices to predict the next price.
-# You can adjust the sequence_length, units, and other parameters to improve the model.
+# Check lengths for debugging
+
+# print("Length of plot_dates:", len(test_datetime))
+# print("Length of real_prices[0]:", len(real_prices[0]))
+# print("Length of predicted_prices:", len(predicted_prices))
