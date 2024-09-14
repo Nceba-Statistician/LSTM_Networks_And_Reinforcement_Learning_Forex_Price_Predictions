@@ -1,9 +1,8 @@
 from Forex_data import Historical_Forex_data
-
-# Forex/Stock Trading Environment Setup
-
 import gym
 import numpy as np
+
+# Forex/Stock Trading Environment Setup
 
 class ForexTradingEnv(gym.Env):
     def __init__(self, data):
